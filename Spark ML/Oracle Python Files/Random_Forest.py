@@ -32,7 +32,7 @@
 
 # COMMAND ----------
 
-
+# Import Spark SQL and Spark ML libraries
 from pyspark.sql.types import *
 from pyspark.sql.functions import *
 from pyspark.context import SparkContext
@@ -172,8 +172,8 @@ test = splits[1].withColumnRenamed("label", "trueLabel")
 
 # COMMAND ----------
 
-# MAGIC %md ### Prepare the Training Data
-# MAGIC To train the classification model, you need a training data set that includes a vector of numeric features, and a label column. In this exercise, you will use the **VectorAssembler** class to transform the feature columns into a vector, and then rename the **ArrDelay** column to **label**.
+# MAGIC %md ### Prepare the Training Data create Pipeline
+# MAGIC To train the classification model, you need a training data set that includes a vector of numeric features, and a label column. In this exercise, you will use the **VectorAssembler** class to transform the feature columns into a vector,Normlize data using Minmax.
 
 # COMMAND ----------
 
@@ -208,7 +208,7 @@ print("Pipeline complete!")
 
 # COMMAND ----------
 
-# MAGIC %md  ### Test the Recommender
+# MAGIC %md ### Test the Recommender 
 # MAGIC The model produced by the pipeline is a transformed that will apply to all stages in the pipeline to a specified DataFrame and apply the trained model to generate predictions. In this case, you will transform the test DataFrame using the pipeline to generate label prediction
 
 # COMMAND ----------
@@ -249,3 +249,27 @@ print("Test Error = %g" % (1.0 - accuracy))
 rf_evaluator =  MulticlassClassificationEvaluator(labelCol="trueLabel", predictionCol="prediction")
 rf_auc = rf_evaluator.evaluate(prediction)
 print("AUC for Random Forest is= ", rf_auc)
+
+# COMMAND ----------
+
+# MAGIC %md #### Random Forest Confusion matrix
+# MAGIC Calculate confusion matrix and measure precision,Recall
+
+# COMMAND ----------
+
+# Only for Classification Logistic Regression not for Linear Regression
+
+tp = float(predicted.filter("prediction == 1.0 AND truelabel == 1").count())
+fp = float(predicted.filter("prediction == 1.0 AND truelabel == 0").count())
+tn = float(predicted.filter("prediction == 0.0 AND truelabel == 0").count())
+fn = float(predicted.filter("prediction == 0.0 AND truelabel == 1").count())
+metrics = spark.createDataFrame([
+ ("TP", tp),
+ ("FP", fp),
+ ("TN", tn),
+ ("FN", fn),
+ ("Precision", tp / (tp + fp)),
+ ("Recall", tp / (tp + fn))],["metric", "value"])
+metrics.show()
+
+

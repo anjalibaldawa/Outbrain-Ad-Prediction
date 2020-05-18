@@ -47,6 +47,8 @@ from pyspark.ml.feature import VectorAssembler, StringIndexer, VectorIndexer, Mi
 from pyspark.ml.linalg import Vectors
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.regression import LinearRegression
+from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
+
 
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.feature import VectorAssembler
@@ -138,8 +140,8 @@ test = splits[1].withColumnRenamed("label", "trueLabel")
 
 # COMMAND ----------
 
-# MAGIC %md ### Prepare the Training Data
-# MAGIC To train the classification model, you need a training data set that includes a vector of numeric features, and a label column. In this exercise, you will use the **VectorAssembler** class to transform the feature columns into a vector, and then rename the **ArrDelay** column to **label**.
+# MAGIC %md ### Prepare the Training Data create Pipeline
+# MAGIC To train the classification model, you need a training data set that includes a vector of numeric features, and a label column. In this exercise, you will use the **VectorAssembler** class to transform the feature columns into a vector,Normlize data using Minmax.
 
 # COMMAND ----------
 
@@ -154,12 +156,17 @@ pipeline = Pipeline(stages=[assembler,minMax,featVect,lr])
 
 # COMMAND ----------
 
-# MAGIC %md The pipeline itself is an estimator, and so it has a fit method that you can call to run the pipeline on a specified DataFrame. In this case, you will run the pipeline on the training data to train a model.
+# MAGIC %md ### Tune Parameters
+# MAGIC You can tune parameters to find the best model for your data. To do this you can use the  **CrossValidator** class to evaluate each combination of parameters defined in a **ParameterGrid** against multiple *folds* of the data split into training and validation datasets, in order to find the best performing parameters. Note that this can take a long time to run because every parameter combination is tried multiple times.
 
 # COMMAND ----------
 
-piplineModel = pipeline.fit(train)
-print("Pipeline complete!")
+paramGrid = ParamGridBuilder().addGrid(lr.regParam, [0.3, 0.01]).addGrid(lr.maxIter, [10, 5]).build()
+# TODO: K = 2, you may test it with 5, 10
+# K=2, 5, 10: Root Mean Square Error (RMSE): 13.2
+cv = CrossValidator(estimator=pipeline, evaluator=RegressionEvaluator(), estimatorParamMaps=paramGrid, numFolds=10)
+
+model = cv.fit(train)
 
 
 # COMMAND ----------
@@ -170,7 +177,7 @@ print("Pipeline complete!")
 # COMMAND ----------
 
 # piplineModel with train data set applies test data set and generate predictions
-prediction = piplineModel.transform(test)
+prediction = model.transform(test)
 predicted = prediction.select("features", "prediction", "trueLabel")
 predicted.show(100, truncate=False)
 
@@ -205,3 +212,24 @@ print("Test Error = %g" % (1.0 - accuracy))
 rf_evaluator =  MulticlassClassificationEvaluator(labelCol="trueLabel", predictionCol="prediction")
 rf_auc = rf_evaluator.evaluate(prediction)
 print("AUC for Logistic Regression is= ", rf_auc)
+
+# COMMAND ----------
+
+# MAGIC %md #### Logistic Regression Confusion matrix
+# MAGIC Calculate confusion matrix and measure precision,Recall
+
+# COMMAND ----------
+
+tp = float(predicted.filter("prediction == 1.0 AND truelabel == 1").count())
+fp = float(predicted.filter("prediction == 1.0 AND truelabel == 0").count())
+tn = float(predicted.filter("prediction == 0.0 AND truelabel == 0").count())
+fn = float(predicted.filter("prediction == 0.0 AND truelabel == 1").count())
+metrics = spark.createDataFrame([
+ ("TP", tp),
+ ("FP", fp),
+ ("TN", tn),
+ ("FN", fn),
+ ("Precision", tp ),
+ ("Recall", tp / (tp + fn))],["metric", "value"])
+metrics.show()
+
